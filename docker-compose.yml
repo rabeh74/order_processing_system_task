@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      # Build the Dockerfile in the current directory
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      # Load environment variables from .env file
+      - .env
+    ports:
+      # Map port 8000 from the container to the host
+      - "8000:8000"
+    volumes:
+      # Sync local app directory with container for live code updates
+      - ./app:/app
+      # Persistent storage for static and media files
+      - dev-static-data:/vol/web
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000"
+    environment:
+      # Environment variables for Django to connect to the database
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-order_db}
+      - DB_USER=${DB_USER:-order_user}
+      - DB_PASS=${DB_PASSWORD:-order_password}
+      - DEBUG=1  # Enable debug mode
+    depends_on:
+      # Ensure the database is running before starting the app
+      - db
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      # Persistent storage for PostgreSQL data
+      - dev-db-data:/var/lib/postgresql/data
+    environment:
+      # PostgreSQL configuration (overridable via .env)
+      - POSTGRES_DB=${DB_NAME:-order_db}
+      - POSTGRES_USER=${DB_USER:-order_user}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-order_password}
+    ports:
+      # Expose PostgreSQL port for debugging (optional)
+      - "5432:5432"
+
+  redis:
+    image: redis:alpine
+    command: redis-server --requirepass redis  # Secure Redis with a password
+    ports:
+      # Expose Redis port for debugging (optional)
+      - "6379:6379"
+    volumes:
+      # Persistent storage for Redis data
+      - dev-redis-data:/data
+
+  celery:
+    build:
+      # Reuse the same Dockerfile as the app service
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: celery -A order_processing worker --loglevel=info
+    volumes:
+      # Sync local app directory with container
+      - ./app:/app
+    environment:
+      # Ensure Celery uses the correct Django settings module
+      - DJANGO_SETTINGS_MODULE=order_processing.settings
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-order_db}
+      - DB_USER=${DB_USER:-order_user}
+      - DB_PASS=${DB_PASSWORD:-order_password}
+    depends_on:
+      # Ensure Redis and the app are available
+      - redis
+      - app
+
+  celery-beat:
+    build:
+      # Reuse the same Dockerfile as the app service
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: celery -A order_processing beat --loglevel=info
+    volumes:
+      # Sync local app directory with container
+      - ./app:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=order_processing.settings
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-order_db}
+      - DB_USER=${DB_USER:-order_user}
+      - DB_PASS=${DB_PASSWORD:-order_password}
+    depends_on:
+      # Ensure Redis is available
+      - redis
+
+volumes:
+  dev-db-data:      # Persistent volume for PostgreSQL data
+  dev-static-data:  # Persistent volume for static and media files
+  dev-redis-data:   # Persistent volume for Redis data
