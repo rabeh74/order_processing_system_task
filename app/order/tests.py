@@ -4,8 +4,6 @@ from rest_framework import status
 from django.contrib.auth import get_user_model
 from order.models import Order, OrderItem, Product, PromoCode
 from django.utils import timezone
-from unittest.mock import patch
-
 
 User = get_user_model()
 
@@ -248,7 +246,7 @@ class OrderViewSetTestCase(APITestCase):
         self.assertEqual(Order.objects.count(), 0)
         self.product1.refresh_from_db()
         self.assertEqual(self.product1.stock, 15)
-
+    
 
 class ProductViewSetTestCase(APITestCase):
     def setUp(self):
