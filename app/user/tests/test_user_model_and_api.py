@@ -1,3 +1,4 @@
+import email
 from django.test import TestCase
 from django.urls import reverse
 
@@ -49,7 +50,7 @@ class UserModelTests(TestCase):
 class UserPublicAPITests(APITestCase):
     def setUp(self):
         self.user_params = {
-            'email':'test@emai.com',
+            'email': 'test@email.com',
             'password1':'testpass',
             'password2':'testpass',
         }
@@ -68,7 +69,7 @@ class UserAPITests(APITestCase):
     def setUp(self):
         # Create a test user
         self.user_params = {
-            'email':'test@emai.com',
+            'email': 'test@email.com',
             'password':'testpass',
             'phone_number':'1234567890',
         }
@@ -121,7 +122,7 @@ class UserAPITests(APITestCase):
             "password1": "newpassword",
             "password2": "newpassword",
         }
-        
+
         self.client.force_authenticate(user=self.user)
         url = self.user_update_url
         response = self.client.put(url, new_data)
@@ -150,5 +151,20 @@ class UserAPITests(APITestCase):
         self.assertTrue(self.user.check_password(self.user_params["password"]))
         self.assertNotIn("password", response.data)
         self.assertEqual("test@emai.com", self.user.email)
+    
+    def test_user_list(self):
+        """
+        Ensure a user can list all users.
+        """
+        admin_user = create_superuser(email='test1@example.com', password='testpass123')
+        user1 = create_user(email='test2@example.com', password='testpass123')
+        user2 = create_user(email='test3@example.com', password='testpass123')
+        user3 = create_user(email='test4@example.com', password='testpass123')
+
+        self.client.force_authenticate(user=admin_user)
+        url = reverse('user:list_users')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 5)
 
     

@@ -55,7 +55,7 @@ class OrderViewSetTestCase(APITestCase):
         self.client.logout()  # Explicitly logout
         self.client.force_authenticate(user=None)  
         response = self.client.get(self.list_url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     
     def test_create_order_success(self):
@@ -233,7 +233,6 @@ class OrderViewSetTestCase(APITestCase):
             'coupon_code': 'SAVE10'
         }
         response = self.client.put(self.detail_url, data, format='json')
-        print(response.data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
         self.product1.refresh_from_db()
@@ -241,3 +240,207 @@ class OrderViewSetTestCase(APITestCase):
         
         self.assertEqual(self.product1.stock, initial_stock_product1 + self.order_item.quantity)  
         self.assertEqual(self.product2.stock, initial_stock_product2 - 2) 
+    
+    def test_delete_order(self):
+        """Test deleting an order"""
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Order.objects.count(), 0)
+        self.product1.refresh_from_db()
+        self.assertEqual(self.product1.stock, 15)
+
+
+class ProductViewSetTestCase(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        
+        # Create users
+        self.staff_user = User.objects.create_superuser(email='staff@example.com', password='staffpass123')
+        self.regular_user = User.objects.create_user(email='user@example.com', password='userpass123')
+        
+        # Create initial product
+        self.product = Product.objects.create(name='Laptop', price=999.99, stock=10)
+        
+        # URLs
+        self.list_url = reverse('product-list')
+        self.detail_url = reverse('product-detail', kwargs={'pk': self.product.pk})
+
+    def test_list_products_anyone(self):
+        """Test that anyone can list products"""
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_retrieve_product_anyone(self):
+        """Test that anyone can retrieve a product"""
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['name'], 'Laptop')
+
+    def test_create_product_staff(self):
+        """Test that staff can create a product"""
+        self.client.force_authenticate(user=self.staff_user)
+        data = {'name': 'Keyboard', 'price': 49.99, 'stock': 20}
+        response = self.client.post(self.list_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Product.objects.count(), 2)
+        self.assertEqual(response.data['name'], 'Keyboard')
+
+    def test_create_product_non_staff(self):
+        """Test that non-staff cannot create a product"""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {'name': 'Monitor', 'price': 199.99, 'stock': 10}
+        response = self.client.post(self.list_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_product_staff(self):
+        """Test that staff can update a product"""
+        self.client.force_authenticate(user=self.staff_user)
+        data = {'name': 'Laptop Updated', 'price': 1099.99, 'stock': 15}
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.name, 'Laptop Updated')
+        self.assertEqual(float(self.product.price), 1099.99)
+
+    def test_update_product_non_staff(self):
+        """Test that non-staff cannot update a product"""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {'name': 'Laptop Updated', 'price': 1099.99, 'stock': 15}
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    
+    def test_list_products_with_only_stock(self):
+        """Test that only products with stock are listed"""
+        response = self.client.get(self.list_url)
+        product2 = Product.objects.create(name='mobile', price=999.99, stock=0)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['name'], 'Laptop')
+
+
+
+
+class PromoCodeViewSetTestCase(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        
+        # Create users
+        self.staff_user = User.objects.create_superuser(email='staff@example.com', password='staffpass123')
+        self.regular_user = User.objects.create_user(email='user@example.com', password='userpass123')
+        
+        # Create initial promo code
+        self.promo_code = PromoCode.objects.create(
+            coupon_code='SAVE10',
+            coupon_name='Save $10',
+            type='FIXED',
+            fixed_amount=10.00,
+            start_at=timezone.now() - timezone.timedelta(days=1),
+            ended_at=timezone.now() + timezone.timedelta(days=30),
+            is_active=True,
+            count=100
+        )
+        
+        # URLs
+        self.list_url = reverse('promo-code-list')
+        self.detail_url = reverse('promo-code-detail', kwargs={'pk': self.promo_code.pk})
+
+    def test_list_promo_codes_anyone(self):
+        """Test that anyone can list promo codes without authentication"""
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['coupon_code'], 'SAVE10')
+
+    def test_retrieve_promo_code_anyone(self):
+        """Test that anyone can retrieve a promo code without authentication"""
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['coupon_code'], 'SAVE10')
+
+    def test_create_promo_code_staff(self):
+        """Test that staff can create a promo code"""
+        self.client.force_authenticate(user=self.staff_user)
+        data = {
+            'coupon_code': 'HALFOFF',
+            'coupon_name': '50% Off',
+            'type': 'PERCENTAGE',
+            'discount_percentage': 50.00,
+            'start_at': timezone.now().isoformat(),
+            'ended_at': (timezone.now() + timezone.timedelta(days=15)).isoformat(),
+            'is_active': True,
+            'count': 50
+        }
+        response = self.client.post(self.list_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(PromoCode.objects.count(), 2)
+        self.assertEqual(response.data['coupon_code'], 'HALFOFF')
+
+    def test_create_promo_code_non_staff(self):
+        """Test that non-staff cannot create a promo code"""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {
+            'coupon_code': 'EXTRA20',
+            'coupon_name': 'Extra $20',
+            'type': 'FIXED',
+            'fixed_amount': 20.00,
+            'start_at': timezone.now().isoformat(),
+            'ended_at': (timezone.now() + timezone.timedelta(days=10)).isoformat(),
+            'is_active': True,
+            'count': 10
+        }
+        response = self.client.post(self.list_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_update_promo_code_staff(self):
+        """Test that staff can update a promo code"""
+        self.client.force_authenticate(user=self.staff_user)
+        data = {
+            'coupon_code': 'SAVE10',
+            'coupon_name': 'Save $15',
+            'type': 'FIXED',
+            'fixed_amount': 15.00,
+            'start_at': timezone.now().isoformat(),
+            'ended_at': (timezone.now() + timezone.timedelta(days=30)).isoformat(),
+            'is_active': True,
+            'count': 100
+        }
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.promo_code.refresh_from_db()
+        self.assertEqual(self.promo_code.coupon_name, 'Save $15')
+        self.assertEqual(float(self.promo_code.fixed_amount), 15.00)
+
+    def test_update_promo_code_non_staff(self):
+        """Test that non-staff cannot update a promo code"""
+        self.client.force_authenticate(user=self.regular_user)
+        data = {
+            'coupon_code': 'SAVE10',
+            'coupon_name': 'Save $20',
+            'type': 'FIXED',
+            'fixed_amount': 20.00,
+            'start_at': timezone.now().isoformat(),
+            'ended_at': (timezone.now() + timezone.timedelta(days=30)).isoformat(),
+            'is_active': True,
+            'count': 100
+        }
+        response = self.client.put(self.detail_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_promo_code_unauthenticated(self):
+        """Test that unauthenticated users cannot create a promo code"""
+        self.client.force_authenticate(user=None)
+        data = {
+            'coupon_code': 'EXTRA20',
+            'coupon_name': 'Extra $20',
+            'type': 'FIXED',
+            'fixed_amount': 20.00,
+            'start_at': timezone.now().isoformat(),
+            'ended_at': (timezone.now() + timezone.timedelta(days=10)).isoformat(),
+            'is_active': True,
+            'count': 10
+        }
+        response = self.client.post(self.list_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

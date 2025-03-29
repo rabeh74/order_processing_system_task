@@ -1,6 +1,4 @@
-# app/order_app/views.py
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework import viewsets, status , permissions
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import Order, Product, PromoCode, OrderItem
@@ -9,6 +7,20 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 # from .tasks.email_tasks import send_order_confirmation_email
 
+class IsAdminOrReadOnly(permissions.BasePermission):
+    """Custom permission: allow read-only for all, write actions for staff/admin only"""
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS: 
+            return True
+        return request.user.is_authenticated and request.user.is_staff 
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductSerializer
+    queryset = Product.objects.filter(stock__gt=0)
+    filter_backends = [DjangoFilterBackend]
+    permission_classes = [IsAdminOrReadOnly]
+    
 class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
@@ -33,14 +45,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
         return Response(serializer.data)
-        
     
-class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    serializer_class = ProductSerializer
-    queryset = Product.objects.all()  
-    filter_backends = [DjangoFilterBackend]
+    def destroy(self, request, *args, **kwargs):
+        """Delete an order using the serializer's delete method"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        serializer.delete(instance)  # This should trigger the serializer's delete method
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
-class PromoCodeViewSet(viewsets.ReadOnlyModelViewSet):
+
+class PromoCodeViewSet(viewsets.ModelViewSet):
     serializer_class = PromoCodeSerializer
     queryset = PromoCode.objects.filter(
         is_active=True,
@@ -48,3 +62,4 @@ class PromoCodeViewSet(viewsets.ReadOnlyModelViewSet):
         ended_at__gte=timezone.now()
     )
     filter_backends = [DjangoFilterBackend]
+    permission_classes = [IsAdminOrReadOnly]

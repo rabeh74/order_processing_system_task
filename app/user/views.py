@@ -3,11 +3,13 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.response import Response
 from rest_framework import generics , permissions , authentication
 from .serializers import UserSerializer
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        # Add custom claims to the token
         token['email'] = user.email
         return token
 
@@ -33,4 +35,11 @@ class UserRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         self.perform_update(serializer)
 
         return Response(serializer.data)
+
+class UserListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = (permissions.IsAdminUser,)
+    authentication_classes = (authentication.TokenAuthentication , )
+    queryset = User.objects.all()
+    
     
