@@ -50,7 +50,8 @@ class UserPublicAPITests(APITestCase):
     def setUp(self):
         self.user_params = {
             'email':'test@emai.com',
-            'password':'testpass',
+            'password1':'testpass',
+            'password2':'testpass',
         }
     
     def test_create_user(self):
@@ -59,8 +60,8 @@ class UserPublicAPITests(APITestCase):
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         user = get_user_model().objects.get(email=data['email'])
-        self.assertTrue(user.check_password(data['password']))
-        self.assertNotIn('password', response.data)
+        self.assertTrue(user.check_password(data['password1']))
+        self.assertNotIn('password1', response.data)
         self.assertEqual(response.data['email'], data['email'])
 
 class UserAPITests(APITestCase):
@@ -69,6 +70,7 @@ class UserAPITests(APITestCase):
         self.user_params = {
             'email':'test@emai.com',
             'password':'testpass',
+            'phone_number':'1234567890',
         }
         self.user =create_user(**self.user_params)
         self.login_url = reverse('user:token_obtain_pair')
@@ -116,17 +118,37 @@ class UserAPITests(APITestCase):
         """
         new_data = {
             "phone_number": "1234567890" ,
-            "password": "newpassword",
+            "password1": "newpassword",
+            "password2": "newpassword",
         }
+        
         self.client.force_authenticate(user=self.user)
         url = self.user_update_url
         response = self.client.put(url, new_data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.phone_number, new_data["phone_number"])
-        self.assertTrue(self.user.check_password(new_data["password"]))
+        self.assertTrue(self.user.check_password(new_data["password1"]))
         self.assertNotIn("password", response.data)
         self.assertEqual("test@emai.com", self.user.email)
-
+    
+    def test_user_update_invalid_password(self):
+        """
+        Ensure a user cannot update with invalid password.
+        """
+        new_data = {
+            "phone_number": "1234567890" ,
+            "password1": "newpassword",
+            "password2": "wrongpassword",
+        }
+        self.client.force_authenticate(user=self.user)
+        url = self.user_update_url
+        response = self.client.put(url, new_data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.phone_number, self.user_params["phone_number"])
+        self.assertTrue(self.user.check_password(self.user_params["password"]))
+        self.assertNotIn("password", response.data)
+        self.assertEqual("test@emai.com", self.user.email)
 
     

@@ -1,0 +1,36 @@
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+
+# Ignore Django and environment files
+*.sqlite3
+db.sqlite3
+*.log
+.env
+*.env
+
+# Ignore compiled/machine files
+*.so
+*.o
+*.a
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Git and editor files
+.git/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore dependencies
+node_modules/
+*.egg-info/
